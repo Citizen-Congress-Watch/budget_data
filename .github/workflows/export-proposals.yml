@@ -15,7 +15,6 @@ jobs:
 
     env:
       KEYSTONE_URL: ${{ secrets.KEYSTONE_URL }}
-      KEYSTONE_TOKEN: ${{ secrets.KEYSTONE_TOKEN }}
       OUTPUT_DIR: ${{ github.workspace }}
       # 視需要調整，預設最大 10 筆，這裡提高
       MAX_RECORDS: ${{ secrets.MAX_RECORDS || 500000 }}
