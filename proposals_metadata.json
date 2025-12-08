@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2025-12-08T08:28:13.705Z",
+  "generatedAt": "2025-12-08T09:12:45.403Z",
   "totalYears": 1,
   "totalRecords": 8033,
-  "maxRecords": 100000,
+  "maxRecords": 500000,
   "batchSize": 1000,
   "where": {
     "publishStatus": {
