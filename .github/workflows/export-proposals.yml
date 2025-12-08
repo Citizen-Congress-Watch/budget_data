@@ -1,0 +1,56 @@
+name: Export Proposals Weekly
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每週六 21:00 (Asia/Taipei, UTC+8 => 13:00 UTC)
+    - cron: '0 13 * * 6'
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tool
+
+    env:
+      KEYSTONE_URL: ${{ secrets.KEYSTONE_URL }}
+      KEYSTONE_TOKEN: ${{ secrets.KEYSTONE_TOKEN }}
+      OUTPUT_DIR: ${{ github.workspace }}
+      # 視需要調整，預設最大 10 筆，這裡提高
+      MAX_RECORDS: ${{ secrets.MAX_RECORDS || 500000 }}
+      # 需要自訂條件時可在 repo secrets 設定 PROPOSAL_WHERE_JSON
+      PROPOSAL_WHERE_JSON: ${{ secrets.PROPOSAL_WHERE_JSON }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: tool/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export proposals
+        run: npm run export:proposals
+
+      - name: Commit and push if changed
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          if git status --porcelain | grep .; then
+            git add .
+            git commit -m "chore: weekly export [skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi
+
