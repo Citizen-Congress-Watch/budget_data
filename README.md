@@ -1,5 +1,5 @@
 # budget_data
-中央政府總預算審議提案資料，預設每週每次更新會在本資料夾提供 `proposals_year_<year>.csv` 與相同內容的 `proposals_year_<year>.json`，以下為欄位對照：
+中央政府總預算審議提案資料，預設每週六晚上會自動匯出資料庫中的資料。每次更新會在本資料夾提供 `proposals_year_<year>.csv` 與相同內容的 `proposals_year_<year>.json`，以下為欄位對照：
 
 ## 欄位對照
 | 欄位 | 說明 |
