@@ -20,22 +20,15 @@ export async function graphqlRequest(query, variables = {}) {
   });
 
   if (!response.ok) {
-    const text = await safeReadText(response);
+    const text = await response.text();
     throw new Error(`GraphQL HTTP ${response.status}: ${text}`);
   }
 
   const payload = await response.json();
   if (payload.errors && payload.errors.length) {
-    throw new Error(`GraphQL 錯誤：${JSON.stringify(payload.errors)}`);
+    throw new Error(`GraphQL 錯誤: ${JSON.stringify(payload.errors)}`);
   }
   return payload.data;
 }
 
-async function safeReadText(response) {
-  try {
-    return await response.text();
-  } catch (error) {
-    return `<無法讀取 response body: ${error.message}>`;
-  }
-}
 

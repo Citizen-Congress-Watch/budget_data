@@ -12,6 +12,9 @@ const CSV_COLUMNS = [
   { key: 'freeze_amount', header: 'freeze_amount' },
   { key: 'reason', header: 'reason' },
   { key: 'description', header: 'description' },
+  { key: 'frozen_status', header: 'frozen_status' },
+  { key: 'frozen_history', header: 'frozen_history' },
+  { key: 'frozen_report', header: 'frozen_report' },
   { key: 'budget_image_url', header: 'budget_image_url' },
   { key: 'historical_proposals', header: 'historical_proposals' },
   { key: 'historical_parent_proposal', header: 'historical_parent_proposal' },
@@ -45,30 +48,35 @@ const RESULT_LABELS = {
   withdrawn: '撤案'
 };
 
+const FROZEN_STATUS_LABELS = {
+  unfrozen: '已解凍',
+  not_reviewed: '尚未審議',
+  reviewing: '審議中'
+};
+
 const PROPOSAL_BATCH_QUERY = `
   query ProposalBatch($take: Int!, $skip: Int!, $where: ProposalWhereInput) {
     proposals(orderBy: { id: asc }, take: $take, skip: $skip, where: $where) {
       id
-      publishStatus
       proposalTypes
       result
       reductionAmount
       freezeAmount
       reason
       description
+      unfreezeStatus
+      unfreezeReport
+      unfreezeHistory { id displayName }
       budgetImageUrl
-      budgetMajorCategory
-      budgetMediumCategory
-      budgetMinorCategory
-      budgetProjectName
-      budgetType
-      budgetYear
-      budgetAmount
       year { id year }
       government { id name category }
       meetings { id displayName }
-      proposers { id name type }
-      coSigners { id name type }
+      proposers { id name }
+      coSigners { id name }
+      historicalProposals { id }
+      mergedProposals { id }
+      historicalParentProposals { id }
+      mergedParentProposals { id }
       budget {
         id
         projectName
@@ -76,15 +84,9 @@ const PROPOSAL_BATCH_QUERY = `
         majorCategory
         mediumCategory
         minorCategory
-        type
         budgetAmount
-        year
         budgetUrl
       }
-      historicalProposals { id }
-      mergedProposals { id }
-      historicalParentProposals { id }
-      mergedParentProposals { id }
     }
   }
 `;
@@ -138,7 +140,7 @@ export async function exportProposals() {
   }
 
   if (!buckets.size) {
-    console.warn('找不到任何 proposal，確認是否條件過嚴');
+    console.warn('找不到任何 proposal，請確認 where 條件是否過嚴');
     return { lastSyncedAt, totalYears: 0, totalRecords: 0 };
   }
 
@@ -146,19 +148,20 @@ export async function exportProposals() {
   for (const [, bucket] of buckets.entries()) {
     const safeYear = bucket.yearValue || 'unknown';
     const csvContent = stringify(bucket.rows, { header: true, columns: CSV_COLUMNS });
-    const csvName = `proposals_year_${safeYear}.csv`;
-    await writeFile(path.join(CONFIG.outputRoot, csvName), csvContent, 'utf8');
+    await writeFile(
+      path.join(CONFIG.outputRoot, `proposals_year_${safeYear}.csv`),
+      csvContent,
+      'utf8'
+    );
 
-    const jsonName = `proposals_year_${safeYear}.json`;
-    const rowsForJson = bucket.rows.map(row => pruneEmptyFields(row));
     const jsonPayload = {
       generatedAt: lastSyncedAt,
-      recordCount: rowsForJson.length,
+      recordCount: bucket.rows.length,
       year: bucket.yearValue,
-      proposals: rowsForJson
+      proposals: bucket.rows.map(row => pruneEmptyFields(row))
     };
     await writeFile(
-      path.join(CONFIG.outputRoot, jsonName),
+      path.join(CONFIG.outputRoot, `proposals_year_${safeYear}.json`),
       JSON.stringify(jsonPayload, null, 2),
       'utf8'
     );
@@ -169,9 +172,8 @@ export async function exportProposals() {
       generatedAt: lastSyncedAt,
       recordCount: bucket.rows.length
     };
-    const metadataName = `metadata_year_${safeYear}.json`;
     await writeFile(
-      path.join(CONFIG.outputRoot, metadataName),
+      path.join(CONFIG.outputRoot, `metadata_year_${safeYear}.json`),
       JSON.stringify(metadata, null, 2),
       'utf8'
     );
@@ -204,43 +206,50 @@ async function fetchProposalBatch(skip) {
   return data?.proposals ?? [];
 }
 
-function ensureYearBucket(map, key, info) {
-  if (!map.has(key)) {
-    map.set(key, { yearValue: info.yearValue, yearId: info.yearId, rows: [] });
+function ensureYearBucket(map, yearKey, info) {
+  if (!map.has(yearKey)) {
+    map.set(yearKey, { yearValue: info.yearValue, yearId: info.yearId, rows: [] });
   }
-  return map.get(key);
+  return map.get(yearKey);
 }
 
 function flattenProposal(proposal, lastSyncedAt) {
-  const yearValue =
-    proposal.year && proposal.year.year !== undefined && proposal.year.year !== null
-      ? String(proposal.year.year)
-      : '';
   const row = {
-    proposal_id: safeValue(proposal.id),
+    proposal_id: safeString(proposal.id),
     proposal_types: formatProposalTypes(proposal.proposalTypes),
     result: formatResultValue(proposal.result),
     reduction_amount: normalizeNumber(proposal.reductionAmount),
     freeze_amount: normalizeNumber(proposal.freezeAmount),
-    reason: safeValue(proposal.reason),
-    description: safeValue(proposal.description),
-    budget_image_url: safeValue(proposal.budgetImageUrl),
+    reason: safeString(proposal.reason),
+    description: safeString(proposal.description),
+    frozen_status: formatFrozenStatus(proposal.unfreezeStatus),
+    frozen_history: formatLabelList(proposal.unfreezeHistory, 'displayName'),
+    frozen_report: safeString(proposal.unfreezeReport),
+    budget_image_url: safeString(proposal.budget?.budgetUrl || proposal.budgetImageUrl),
     historical_proposals: formatIdList(proposal.historicalProposals),
     historical_parent_proposal: formatSingleRelationId(proposal.historicalParentProposals),
     merged_proposals: formatIdList(proposal.mergedProposals),
     merged_parent_proposal: formatSingleRelationId(proposal.mergedParentProposals),
-    year: yearValue,
-    government_name: safeValue(proposal.government?.name),
-    government_category: safeValue(proposal.government?.category),
+    year: formatYear(proposal.year),
+    government_name: safeString(proposal.government?.name),
+    government_category: safeString(proposal.government?.category),
     meetings: formatLabelList(proposal.meetings, 'displayName'),
     proposers: formatLabelList(proposal.proposers, 'name'),
     co_signers: formatLabelList(proposal.coSigners, 'name'),
-    budget_id: safeValue(proposal.budget?.id),
-    budget_project_name: safeValue(proposal.budget?.projectName || proposal.budgetProjectName),
-    budget_project_description: safeValue(proposal.budget?.projectDescription),
-    budget_major_category: safeValue(proposal.budget?.majorCategory || proposal.budgetMajorCategory),
-    budget_medium_category: safeValue(proposal.budget?.mediumCategory || proposal.budgetMediumCategory),
-    budget_minor_category: safeValue(proposal.budget?.minorCategory || proposal.budgetMinorCategory),
+    budget_id: safeString(proposal.budget?.id),
+    budget_project_name: safeString(
+      proposal.budget?.projectName || proposal.budgetProjectName
+    ),
+    budget_project_description: safeString(proposal.budget?.projectDescription),
+    budget_major_category: safeString(
+      proposal.budget?.majorCategory || proposal.budgetMajorCategory
+    ),
+    budget_medium_category: safeString(
+      proposal.budget?.mediumCategory || proposal.budgetMediumCategory
+    ),
+    budget_minor_category: safeString(
+      proposal.budget?.minorCategory || proposal.budgetMinorCategory
+    ),
     budget_amount: normalizeNumber(proposal.budget?.budgetAmount ?? proposal.budgetAmount),
     last_synced_at: lastSyncedAt
   };
@@ -260,31 +269,48 @@ function formatResultValue(value) {
   return RESULT_LABELS[value] || value;
 }
 
-function formatLabelList(nodes, labelKey = 'name') {
+function formatFrozenStatus(value) {
+  if (!value) return '';
+  return FROZEN_STATUS_LABELS[value] || value;
+}
+
+function formatLabelList(nodes, labelKey) {
   if (!nodes || !nodes.length) return '';
   return nodes
-    .map(node => node?.[labelKey])
-    .filter(label => typeof label === 'string' && label.trim() !== '')
+    .map(node => safeString(node?.[labelKey]))
+    .filter(Boolean)
     .join('|');
 }
 
 function formatIdList(nodes) {
   if (!nodes || !nodes.length) return '';
-  return nodes.map(node => node.id || '').join('|');
-}
-
-function safeValue(value) {
-  if (value === undefined || value === null) return '';
-  return value;
+  return nodes
+    .map(node => safeString(node?.id))
+    .filter(Boolean)
+    .join('|');
 }
 
 function formatSingleRelationId(node) {
   if (!node) return '';
-  if (Array.isArray(node)) {
-    const first = node.find(item => item && item.id);
-    return first ? first.id : '';
-  }
-  return node.id || '';
+  const target = Array.isArray(node) ? node.find(item => item && item.id) : node;
+  return safeString(target?.id);
+}
+
+function formatYear(year) {
+  if (!year || year.year === undefined || year.year === null) return '';
+  return String(year.year);
+}
+
+function normalizeNumber(value) {
+  if (value === undefined || value === null || value === '') return '';
+  const num = Number(value);
+  if (Number.isNaN(num)) return '';
+  return String(num);
+}
+
+function safeString(value) {
+  if (value === undefined || value === null) return '';
+  return String(value);
 }
 
 function pruneEmptyFields(row) {
@@ -296,11 +322,6 @@ function pruneEmptyFields(row) {
     }
   }
   return result;
-}
-
-function normalizeNumber(value) {
-  if (value === undefined || value === null) return '';
-  return String(value);
 }
 
 async function writeRootMetadata({ lastSyncedAt, totalYears, totalRecords, limitApplied }) {

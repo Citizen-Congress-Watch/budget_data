@@ -1,7 +1,7 @@
 {
-  "name": "budget_data",
+  "name": "tool",
   "version": "1.0.0",
-  "description": "Scheduled exporter for Keystone proposal data",
+  "description": "",
   "main": "src/index.js",
   "scripts": {
     "export:proposals": "node src/index.js",
@@ -13,7 +13,7 @@
   "type": "module",
   "dependencies": {
     "csv-stringify": "^6.6.0",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.2.4",
     "node-fetch": "^3.3.2"
   }
 }

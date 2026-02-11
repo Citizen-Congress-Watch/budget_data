@@ -7,10 +7,11 @@ async function main() {
       `匯出完成：${summary.totalRecords} 筆、${summary.totalYears} 個年度（${summary.lastSyncedAt}）`
     );
   } catch (error) {
-    console.error('匯出失敗：', error);
+    console.error('匯出失敗：', error.message);
     process.exitCode = 1;
   }
 }
 
 main();
+
 
