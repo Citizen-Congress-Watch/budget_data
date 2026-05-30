@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-05-23T14:28:01.318Z",
-  "totalYears": 1,
-  "totalRecords": 8035,
+  "generatedAt": "2026-05-30T14:27:28.680Z",
+  "totalYears": 2,
+  "totalRecords": 8188,
   "maxRecords": 500000,
   "batchSize": 1000,
   "where": {
